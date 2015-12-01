@@ -2,6 +2,7 @@
 #include <math.h>
 #include <assert.h>
 #include <stdlib.h>
+#include <avr/eeprom.h>
 
  //Configure timers/USART/interrupts/etc
 
@@ -13,9 +14,14 @@ void readE2PROM(void);
 void writeE2PROM(void);
 
 }
+
+//eeprom
+//eeprom_read_block();
+//  uint8_t byteRead = eeprom_read_byte((uint8_t*)23); // read the byte in location 23
+//eeprom_write_block();
+//  eeprom_write_byte ((uint8_t*) 23, 64); //  write the byte 64 to location 23 of the EEPROM
+
 int main(int argc, char *argv[]) {
-
-
   //initialize USART
   //Enable Receiver and transmitter
   //initialize to 8 bits, 1 start, 1 stop bit
