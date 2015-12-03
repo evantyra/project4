@@ -16,8 +16,8 @@ void usart_init(uint16_t);
 void usart_putchar(char);
 char usart_getchar(void);
 // EEPROM
-void readE2PROM(void);
-void writeE2PROM(void);
+void eeprom_write(uint_t);
+void eeprom_read(uint_t);
 
 //eeprom
 //eeprom_read_block();
@@ -95,10 +95,10 @@ void flushUsart() {
   while ( !(UCSRA & (_BV(UDRE))) ); // Waits for buffer to be empty.
 }
 
-void readE2PROM() {
-
+void eeprom_write(uint_t *to) {
+  eeprom_write_block(to, data, 100);
 }
 
-void writeE2PROM() {
-
+void eeprom_read(uint_t *from) {
+  eeprom_read_block(from, data, 100);
 }
