@@ -5,7 +5,7 @@
 #include <avr/io.h>
 #include <avr/delay.h>
 
-#define  16000000 // 16MHz
+#define CF_CPU 16000000 // 16MHz
 #define BAUD 31250 // not sure how to find Baud
 #define MYUBRR F_CPU/16/BAUD-1
 
@@ -27,28 +27,46 @@ int main(int argc, char *argv[]) {
 
   // -- LEDS light up to display startup --
   PORTB = 0b00000001;
-  _delay_loop_2(1000); //delay of 1s
+  _delay_loop_2(65000); //delay of 1s
   PORTB = 0b00000011;
-  _delay_loop_2(1000);
+  _delay_loop_2(65000);
   PORTB = 0b00000111;
-  _delay_loop_2(1000);
+  _delay_loop_2(65000);
+  PORTB = 0b00000011;
+  _delay_loop_2(65000);
+  PORTB = 0b00000001;
+  _delay_loop_2(65000);
   PORTB = 0b00000000;
+  _delay_loop_2(65000);
+  
 
   //initialize USART
-  usart_init(MYUBBR);
+  usart_init(MYUBRR);
 
   // -- Start Listening --
-	char led;
+  char status, note, velocity;
   while (1) {
     // Test USART receive
-    led = usart_getchar(); // Not sure if it is blocking
-    PORTB = led;
-    _delay_loop_2(5000); // LEDS light for 5s
-    PORTB = 0x00; // Clear Lights
+    status = usart_getchar(); // Not sure if it is blocking
+    note = usart_getchar();
+	velocity = usart_getchar();
+	
+	flushUsart();
+	flushUsart();
+	flushUsart();
+
+	PORTB = note;
+    _delay_loop_2(65000); // LEDS light for 5s
+    _delay_loop_2(65000);
+	_delay_loop_2(65000);
+	_delay_loop_2(65000);
+	_delay_loop_2(65000);
+	
+	PORTB = 0x00; // Clear Lights
 
     // Test USART send
-    usart_putchar('c');
-    _delay_loop_2(5000);
+    //usart_putchar('c');
+    //_delay_loop_2(65000);
 
 	}
 }
@@ -56,7 +74,9 @@ int main(int argc, char *argv[]) {
 // -- usart functions --
 void usart_init(uint16_t ubrr) {
   // Set baud rate
-  UBRR = ubrr;
+  UBRRH = ubrr >> 8;
+  UBRRL = ubrr;
+
   /* Asynchronous mode
    * No Parity
    * 1 Stop Bit
@@ -84,4 +104,3 @@ char usart_getchar() {
 void flushUsart() {
   while ( !(UCSRA & (_BV(UDRE))) ); // Waits for buffer to be empty.
 }
-
