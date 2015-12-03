@@ -94,7 +94,7 @@ char usart_getchar() {
 }
 
 void flushUsart() {
-
+  while ( !(UCSRA & (_BV(UDRE))) ); // Waits for buffer to be empty.
 }
 
 void readE2PROM() {
