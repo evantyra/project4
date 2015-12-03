@@ -1,10 +1,9 @@
+// Purpose of testUsart is to receive and send midi signals. Debubugged with LEDS
 #include <stdio.h>
 #include <stdlib.h>
 #include <avr/eeprom.h>
 #include <avr/io.h>
 #include <avr/delay.h>
-
-//Configure timers/USART/interrupts/etc
 
 #define  16000000 // 16MHz
 #define BAUD 31250 // not sure how to find Baud
@@ -19,15 +18,7 @@ char usart_getchar(void);
 void eeprom_write(uint_t);
 void eeprom_read(uint_t);
 
-//eeprom
-//eeprom_read_block();
-//  uint8_t byteRead = eeprom_read_byte((uint8_t*)23); // read the byte in location 23
-//eeprom_write_block();
-//  eeprom_write_byte ((uint8_t*) 23, 64); //  write the byte 64 to location 23 of the EEPROM
-
-  //Storage DataEEPROM
- 	//Communication Usart
- 	//Counter Timer1
+static uint8_t data[100] EEMEM;
 
 int main(int argc, char *argv[]) {
   int record = 0, playback = 0;
@@ -49,18 +40,27 @@ int main(int argc, char *argv[]) {
   usart_init(MYUBBR);
 
   // -- Start Listening --
-	while (1) {
-		if (record) {
-			//USART_Read();
-			//Compress();
-			//EEPROM_write();
-		}
-		if (playback) {
-			//EEPROM_read();
-			//Decompress();
-			//USART_write();
-		}
+	char led;
+  while (1) {
+    // Test USART receive
+    led = usart_getchar(); // Not sure if it is blocking
+    PORTB = led;
+    _delay_loop_2(5000); // LEDS light for 5s
+    PORTB = 0x00; // Clear Lights
+
+    // Test USART send
+    usart_putchar('c');
+    _delay_loop_2(5000);
+
 	}
+}
+
+void eeprom_write(uint_t *to) {
+  eeprom_write_block(to, data, 100);
+}
+
+void eeprom_read(uint_t *from) {
+  eeprom_read_block(from, data, 100);
 }
 
 // -- usart functions --
@@ -95,10 +95,3 @@ void flushUsart() {
   while ( !(UCSRA & (_BV(UDRE))) ); // Waits for buffer to be empty.
 }
 
-void eeprom_write(uint_t *to) {
-  eeprom_write_block(to, data, 100);
-}
-
-void eeprom_read(uint_t *from) {
-  eeprom_read_block(from, data, 100);
-}
