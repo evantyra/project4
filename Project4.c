@@ -4,10 +4,11 @@
 #include <avr/io.h>
 #include <avr/delay.h>
 
- //Configure timers/USART/interrupts/etc
+//Configure timers/USART/interrupts/etc
 
-#define CLOCK 16000000
+#define  16000000
 #define BAUD 31250 // not sure how to find Baud
+#define MYUBRR F_CPU/16/BAUD-1
 
 // Header Functions
 void receive(void);
@@ -16,7 +17,11 @@ void flushUsart(void);
 void readE2PROM(void);
 void writeE2PROM(void);
 
-void init_usart(void);
+// Usart Functions
+void usart_init(uint16_t);
+void usart_putchar(char);
+char usart_getchar(void);
+
 //eeprom
 //eeprom_read_block();
 //  uint8_t byteRead = eeprom_read_byte((uint8_t*)23); // read the byte in location 23
@@ -29,7 +34,6 @@ void init_usart(void);
 
 int main(int argc, char *argv[]) {
   int record = 0, playback = 0;
-	//initialize USART
 
   DDRD = 0b00000010; // pin 1: output midi out, pin 0: midi in for storing
   DDRB = 0b11111111; // LEDs for debugging
@@ -42,6 +46,9 @@ int main(int argc, char *argv[]) {
   PORTB = 0b00000111;
   _delay_loop_2(1000);
   PORTB = 0b00000000;
+
+  //initialize USART
+  usart_init(MYUBBR);
 
   // -- Start Listening --
 	while (1) {
@@ -58,12 +65,25 @@ int main(int argc, char *argv[]) {
 	}
 }
 
-void receive() {
-
+// -- usart functions --
+void usart_init(uint16_t ubrr) {
+  // Set baud rate
+  UBRRH = (uint8_t)(ubrr>>8);
+  UBRRL = (uint8_t)ubrr;
+  // Enable receiver and transmitter
+  UCSRB = (1<<RXEN)|(1<<TXEN);
+  // Set frame format: 8data, 1stop bit
+  UCSRC = (1<<URSEL)|(3<<UCSZ0);
 }
 
-void transmit() {
+void usart_putchar(char data) {
+  while ( !(UCSRA & (_BV(UDRE))) ); // waits for transmit buffer to be empty, checks UDRE==1 and Data registry
+  UDR = data; //transmits the data
+}
 
+char usart_getchar() {
+  while ( !(UCSRA & (_BV(RXC))) ); // Waits for RXC==1 (receive complete)
+  return UDR;
 }
 
 void flushUsart() {
