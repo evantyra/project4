@@ -68,12 +68,19 @@ int main(int argc, char *argv[]) {
 // -- usart functions --
 void usart_init(uint16_t ubrr) {
   // Set baud rate
-  UBRRH = (uint8_t)(ubrr>>8);
-  UBRRL = (uint8_t)ubrr;
+  UBRR = ubrr;
+  /* Asynchronous mode
+   * No Parity
+   * 1 Stop Bit
+   * char size 8 bits
+   */
+
+  // Set frame format: 8 bit data, 1stop bit
+  UCSRC=(1<<URSEL)|(3<<UCSZ0);
+
   // Enable receiver and transmitter
   UCSRB = (1<<RXEN)|(1<<TXEN);
-  // Set frame format: 8data, 1stop bit
-  UCSRC = (1<<URSEL)|(3<<UCSZ0);
+
 }
 
 void usart_putchar(char data) {
