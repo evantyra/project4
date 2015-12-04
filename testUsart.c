@@ -23,6 +23,7 @@ int main(int argc, char *argv[]) {
   int Timer1 = 0;
 
   DDRD = 0b00000010; // pin 1: output midi out, pin 0: midi in for storing
+  //PORTD = 0b00000001;
   DDRB = 0b11111111; // LEDs for debugging
 
   // -- LEDS light up to display startup --
@@ -47,15 +48,16 @@ int main(int argc, char *argv[]) {
   char status, note, velocity;
   while (1) {
     // Test USART receive
-    status = usart_getchar(); // Not sure if it is blocking
-    note = usart_getchar();
-	velocity = usart_getchar();
+	usart_putchar(0b00111100);
+    //status = usart_getchar(); // Not sure if it is blocking
+    //note = usart_getchar();
+	//velocity = usart_getchar();
 
-	flushUsart();
-	flushUsart();
-	flushUsart();
+	//flushUsart();
+	//flushUsart();
+	//flushUsart();
 
-	PORTB = note;
+	PORTB = usart_getchar();
     _delay_loop_2(65000); // LEDS light for 5s
     _delay_loop_2(65000);
 	_delay_loop_2(65000);
