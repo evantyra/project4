@@ -38,7 +38,7 @@ int main(int argc, char *argv[]) {
   _delay_loop_2(65000);
   PORTB = 0b00000000;
   _delay_loop_2(65000);
-  
+
 
   //initialize USART
   usart_init(MYUBRR);
@@ -50,7 +50,7 @@ int main(int argc, char *argv[]) {
     status = usart_getchar(); // Not sure if it is blocking
     note = usart_getchar();
 	velocity = usart_getchar();
-	
+
 	flushUsart();
 	flushUsart();
 	flushUsart();
@@ -61,7 +61,7 @@ int main(int argc, char *argv[]) {
 	_delay_loop_2(65000);
 	_delay_loop_2(65000);
 	_delay_loop_2(65000);
-	
+
 	PORTB = 0x00; // Clear Lights
 
     // Test USART send
@@ -74,7 +74,7 @@ int main(int argc, char *argv[]) {
 // -- usart functions --
 void usart_init(uint16_t ubrr) {
   // Set baud rate
-  UBRRH = ubrr >> 8;
+  UBRRH = (ubrr >> 8);
   UBRRL = ubrr;
 
   /* Asynchronous mode
@@ -92,15 +92,15 @@ void usart_init(uint16_t ubrr) {
 }
 
 void usart_putchar(char data) {
-  while ( !(UCSRA & (_BV(UDRE))) ); // waits for transmit buffer to be empty, checks UDRE==1 and Data registry
+  while ((UCSRA & (1 << UDRE)) == 0); // waits for transmit buffer to be empty, checks UDRE==1 and Data registry
   UDR = data; //transmits the data
 }
 
 char usart_getchar() {
-  while ( !(UCSRA & (_BV(RXC))) ); // Waits for RXC==1 (receive complete)
+  while ((UCSRA & (1 << RXC)) == 0); // Waits for RXC==1 (receive complete)
   return UDR;
 }
 
 void flushUsart() {
-  while ( !(UCSRA & (_BV(UDRE))) ); // Waits for buffer to be empty.
+  while ((UCSRA & (1 << UDRE)) == 0); // Waits for buffer to be empty.
 }
