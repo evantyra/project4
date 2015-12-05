@@ -16,6 +16,7 @@ void usart_init(uint16_t);
 void usart_putchar(uint8_t);
 uint8_t usart_getchar(void);
 void usart_flush(void);
+int usart_hasdata(void);
 
 // EEPROM
 void EEPROM_write(unsigned int, unsigned char);
@@ -50,11 +51,12 @@ int main(int argc, char *argv[]) {
 	playback = bit_is_set(PINA,2);
 
 	if ((record && playback) || (!record && !playback)) {
-	  usart_flush();
+	  if (usart_hasdata())
+        usart_flush();
 	  continue;
 	}
 
-    if (record) {
+    if (record && usart_hasdata()) {
 
     	status = usart_getchar();
     	note = usart_getchar();
@@ -130,7 +132,13 @@ uint8_t usart_getchar() {
 
 void usart_flush() {
   while ((UCSRA & (1 << UDRE)) == 0); // Waits for buffer to be empty.
-  while ((UCSRA & (1 << RXC)) == 0);
+}
+
+int usart_hasdata() {
+  if (UCSRA & (1<<RXC))
+  	return 1;
+  else
+    return 0;
 }
 
 void EEPROM_write(unsigned int uniAddress, unsigned char ucData) {
