@@ -13,19 +13,18 @@
 // -- Header Functions --
 // Usart
 void usart_init(uint16_t);
-void usart_putchar(char);
-char usart_getchar(void);
+void usart_putchar(uint8_t);
+uint8_t usart_getchar(void);
 void usart_flush(void);
 
 // EEPROM
-void EEPROM_write(unsigned int, unsigned char );
-uchar EEPROM_read(unsigned int);
+void EEPROM_write(unsigned int, unsigned char);
+uint8_t EEPROM_read(unsigned int);
 
 //static uint8_t data[100] EEMEM;
 
 int main(int argc, char *argv[]) {
-  int record = 0, playback = 0;
-  int Timer1 = 0;
+  int record = 0, playback = 0, Timer1 = 0;
 
   DDRD = 0b00000010; // pin 1: output midi out, pin 0: midi in for storing
   DDRB = 0b11111111; // LEDs for debugging
@@ -38,25 +37,42 @@ int main(int argc, char *argv[]) {
   usart_init(MYUBRR);
 
   //uint8_t* index;
-  int index;
+  int index = 0;
   
-  uint8_t status, note, velocity;
-  uint16_t byteToPlay
+  uint8_t status;
+  uint8_t note;
+  uint8_t velocity;
 
   // -- Start Listening --
   while (1) {
-  	record = PINA.1;
-	playback = PINA.2;
-	if ((record) && (playback))
+    
+  	record = bit_is_set(PINA,1);
+	playback = bit_is_set(PINA,2);
+
+	if ((record && playback) || (!record && !playback)) {
+	  usart_flush();
 	  continue;
+	}
 
     if (record) {
 
     	status = usart_getchar();
     	note = usart_getchar();
 		velocity = usart_getchar();
+		usart_flush();
+		usart_flush();
+		usart_flush();
 
+		// This fixes when it gets stuck in the getchar loops, and record
+		// is switched during that time.
+		if (!bit_is_set(PINA,1))
+			continue;
+
+		EEPROM_write((uint8_t*)index, status);
+		index++;
 		EEPROM_write((uint8_t*)index, note);
+		index++;
+		EEPROM_write((uint8_t*)index, velocity);
 		index++;
 
 		PORTB = note; // for debugging purposes
@@ -64,17 +80,22 @@ int main(int argc, char *argv[]) {
 
 	if (playback) {
 		int playbackIndex = 0;
+		uint8_t byteToPlay;
 		while (playbackIndex < index) {
 			byteToPlay = EEPROM_read((uint8_t*)playbackIndex);
 			usart_putchar(byteToPlay);
 
 			playbackIndex++;
-		
-		 	_delay_ms(1000);
+			
+			//if(playbackIndex % 3 == 0)
+		 		//_delay_ms(2000);
+			_delay_ms(1000);
+			PORTB = playbackIndex; // for debugging purposes
+	   	}
+    }
 
-			PORTB = byetToPlay; // for debugging purposes
-		}
-	}
+	usart_flush();
+  }
 }
 
 // -- usart functions --
@@ -109,9 +130,10 @@ uint8_t usart_getchar() {
 
 void usart_flush() {
   while ((UCSRA & (1 << UDRE)) == 0); // Waits for buffer to be empty.
+  while ((UCSRA & (1 << RXC)) == 0);
 }
 
-void EEPROM_write(unsigned int uniAddress, unsigned char ucData){
+void EEPROM_write(unsigned int uniAddress, unsigned char ucData) {
 	while(EECR & (1 << EEWE)); //wait for write to clear	
 	
 	EEAR = uniAddress; // Set up addr and data reg
@@ -121,7 +143,7 @@ void EEPROM_write(unsigned int uniAddress, unsigned char ucData){
 	EECR |= (1<<EEWE); // Start eeprom write by setting EEWE
 }
 
-uint8_t EEPROM_read(unsigned int uniAddress){
+uint8_t EEPROM_read(unsigned int uniAddress) {
 	while(EECR & (1<<EEWE)); // Wait for completion of write
 
 	EEAR = uniAddress; // Set up addr
