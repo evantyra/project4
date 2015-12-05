@@ -121,7 +121,7 @@ void EEPROM_write(unsigned int uniAddress, unsigned char ucData){
 	EECR |= (1<<EEWE); // Start eeprom write by setting EEWE
 }
 
-uchar EEPROM_read(unsigned int uniAddress){
+uint8_t EEPROM_read(unsigned int uniAddress){
 	while(EECR & (1<<EEWE)); // Wait for completion of write
 
 	EEAR = uniAddress; // Set up addr
