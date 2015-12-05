@@ -5,20 +5,23 @@
 #include <avr/io.h>
 #include <avr/delay.h>
 
-#define  16000000 // 16MHz
+#define CF_CPU 4000000 // 4MHz
 #define BAUD 31250 // not sure how to find Baud
-#define MYUBRR F_CPU/16/BAUD-1
+#define MYUBRR 7//F_CPU/16/BAUD-1
+
 
 // -- Header Functions --
-// Usart Functions
+// Usart
 void usart_init(uint16_t);
 void usart_putchar(char);
 char usart_getchar(void);
-// EEPROM
-void eeprom_write(uint_t);
-void eeprom_read(uint_t);
+void usart_flush(void);
 
-static uint8_t data[100] EEMEM;
+// EEPROM
+void EEPROM_write(unsigned int, unsigned char );
+uchar EEPROM_read(unsigned int);
+
+//static uint8_t data[100] EEMEM;
 
 int main(int argc, char *argv[]) {
   int record = 0, playback = 0;
@@ -26,72 +29,103 @@ int main(int argc, char *argv[]) {
 
   DDRD = 0b00000010; // pin 1: output midi out, pin 0: midi in for storing
   DDRB = 0b11111111; // LEDs for debugging
-
-  // -- LEDS light up to display startup --
-  PORTB = 0b00000001;
-  _delay_loop_2(1000); //delay of 1s
-  PORTB = 0b00000011;
-  _delay_loop_2(1000);
-  PORTB = 0b00000111;
-  _delay_loop_2(1000);
-  PORTB = 0b00000000;
+  DDRA = 0b00000000;
+  // PORTA0 - photo
+  // PORTA1 - record
+  // PORTA2 - playback
 
   //initialize USART
-  usart_init(MYUBBR);
+  usart_init(MYUBRR);
+
+  //uint8_t* index;
+  int index;
+  
+  uint8_t status, note, velocity;
+  uint16_t byteToPlay
 
   // -- Start Listening --
-	char led;
   while (1) {
-    // Test USART receive
-    led = usart_getchar(); // Not sure if it is blocking
-    PORTB = led;
-    _delay_loop_2(5000); // LEDS light for 5s
-    PORTB = 0x00; // Clear Lights
+  	record = PINA.1;
+	playback = PINA.2;
+	if ((record) && (playback))
+	  continue;
 
-    // Test USART send
-    usart_putchar('c');
-    _delay_loop_2(5000);
+    if (record) {
 
+    	status = usart_getchar();
+    	note = usart_getchar();
+		velocity = usart_getchar();
+
+		EEPROM_write((uint8_t*)index, note);
+		index++;
+
+		PORTB = note; // for debugging purposes
 	}
-}
 
-void eeprom_write(uint_t *to) {
-  eeprom_write_block(to, data, 100);
-}
+	if (playback) {
+		int playbackIndex = 0;
+		while (playbackIndex < index) {
+			byteToPlay = EEPROM_read((uint8_t*)playbackIndex);
+			usart_putchar(byteToPlay);
 
-void eeprom_read(uint_t *from) {
-  eeprom_read_block(from, data, 100);
+			playbackIndex++;
+		
+		 	_delay_ms(1000);
+
+			PORTB = byetToPlay; // for debugging purposes
+		}
+	}
 }
 
 // -- usart functions --
 void usart_init(uint16_t ubrr) {
   // Set baud rate
-  UBRR = ubrr;
+  UBRRH = (ubrr >> 8);
+  UBRRL = ubrr;
+
   /* Asynchronous mode
    * No Parity
    * 1 Stop Bit
    * char size 8 bits
    */
 
-  // Set frame format: 8 bit data, 1stop bit
-  UCSRC=(1<<URSEL)|(3<<UCSZ0);
+  // Set frame format: 8 bit data, 1 stop bit
+  UCSRC = (1<<URSEL)|(3<<UCSZ0);
 
   // Enable receiver and transmitter
   UCSRB = (1<<RXEN)|(1<<TXEN);
 
 }
 
-void usart_putchar(char data) {
-  while ( !(UCSRA & (_BV(UDRE))) ); // waits for transmit buffer to be empty, checks UDRE==1 and Data registry
+void usart_putchar(uint8_t data) {
+  while ((UCSRA & (1 << UDRE)) == 0); // waits for transmit buffer to be empty, checks UDRE==1 and Data registry
   UDR = data; //transmits the data
 }
 
-char usart_getchar() {
-  while ( !(UCSRA & (_BV(RXC))) ); // Waits for RXC==1 (receive complete)
+uint8_t usart_getchar() {
+  while ((UCSRA & (1 << RXC)) == 0); // Waits for RXC==1 (receive complete)
   return UDR;
 }
 
-void flushUsart() {
-  while ( !(UCSRA & (_BV(UDRE))) ); // Waits for buffer to be empty.
+void usart_flush() {
+  while ((UCSRA & (1 << UDRE)) == 0); // Waits for buffer to be empty.
 }
 
+void EEPROM_write(unsigned int uniAddress, unsigned char ucData){
+	while(EECR & (1 << EEWE)); //wait for write to clear	
+	
+	EEAR = uniAddress; // Set up addr and data reg
+	EEDR = ucData;
+
+	EECR |= (1<<EEMWE); // Write logical one to EEMWE
+	EECR |= (1<<EEWE); // Start eeprom write by setting EEWE
+}
+
+uchar EEPROM_read(unsigned int uniAddress){
+	while(EECR & (1<<EEWE)); // Wait for completion of write
+
+	EEAR = uniAddress; // Set up addr
+	EECR |= (1<<EERE); // Start eeprom read by writing EERE
+
+	return EEDR;
+}
