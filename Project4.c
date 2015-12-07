@@ -148,11 +148,34 @@ int main(int argc, char *argv[]) {
 
 		// Playback logic
 		while (playback && (record ^ playback)) {
-
-			int playbackIndex = 0;
 			uint8_t byteToPlay;
-			while (playbackIndex < notesToPlay) {
-				byteToPlay = EEPROM_read((uint8_t*)playbackIndex);
+
+			// Length of data holding each note
+			if ((int)log(uniqueNotesRecorded)/log(2) < log(uniqueNotesRecorded)/log(2))
+				uint8_t storageLength = 1 + (int)log(uniqueNotesRecorded) / log(2);
+			else
+				uint8_t storageLength = (int)log(uniqueNotesRecorded) / log(2);
+
+			int byteIndex = 0;
+			uint8_t compareBits = pow(2, storageLength + 1) - 1;
+			uint8_t currentByteRead = EEPROM_read((uint8_t*)byteIndex);
+			uint8_t currentBitIndex = 0;
+
+			for(i = 0; i < notesToPlay; i++) {
+				// Adjusts read byte and logical AND it with the current read byte
+				byteToPlay = compareBits & (currentByteRead >> currentBitIndex);
+
+				// If the whole note wasn't read, grab new byte from EEPROM
+				if (currentBitIndex + storageLength >= 8) {
+					currentByteRead = EEPROM_read((uint8_t*)byteIndex);
+					currentBitIndex = (currentBitIndex + storageLength) % 8;
+					byteIndex++;
+
+					if (currentBitIndex != 0)
+						byteToPlay = byteToPlay + 
+									((pow(2, currentBitIndex + 1) - 1) & currentByteRead) <<
+									(storageLength - currentBitIndex);
+				}
 
 				// Need to double check the pins that correspond correctly
 				int hexaSwitch = (bit_is_set(PIND, 3) << 3 + 
@@ -178,8 +201,6 @@ int main(int argc, char *argv[]) {
 			
 				// Hexaswitch controls how fast notes play back
 				_delay_ms(1000*hexaSwitch + 100); 
-
-				playbackIndex++;
 	   		}
 
 			// Reassigns and updates record and playback		
