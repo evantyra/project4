@@ -104,6 +104,9 @@ int main(int argc, char *argv[]) {
 
 		// Playback logic
 		while (playback && (record ^ playback)) {
+			if (notesToPlay == 0)
+				continue;
+
 			uint8_t byteToPlay;
 
 			// Length of data holding each note
