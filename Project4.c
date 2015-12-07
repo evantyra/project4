@@ -21,9 +21,6 @@ int usart_hasdata(void);
 void EEPROM_write(unsigned int, unsigned char);
 uint8_t EEPROM_read(unsigned int);
 
-// Search functions for Compression
-int is_note_unique(uint8_t);
-
 //static uint8_t data[100] EEMEM;
 
 int main(int argc, char *argv[]) {
@@ -119,6 +116,27 @@ int main(int argc, char *argv[]) {
 			// we can run our compression algorithm and push to EEPROM
 			if (!(record ^ playback)) {
 				// Compression
+				if ((int)log(uniqueNotesRecorded)/log(2) < log(uniqueNotesRecorded)/log(2))
+					uint8_t storageLength = 1 + (int)log(uniqueNotesRecorded) / log(2);
+				else
+					uint8_t storageLength = (int)log(uniqueNotesRecorded) / log(2);
+
+				uint8_t currentBitIndex = 0;
+				int storageByte = 0, storageByteIndex = 0;
+				for (i = 0; i < notesRecorded; i++) {
+					if (currentBitIndex + storageLength >= 8) {
+						storageByte = storageByte  + playOrder[i] << currentBitIndex;
+						EEPROM_write(storageByte, storageByteIndex);
+						storageByteIndex++;
+						currentBitIndex = (currentBitIndex + storageLength) % 8;
+						if (currentBitIndex != 0)
+							storageByte = storageByte + playOrder[i] >> (storageLength - currentBitIndex);
+					}
+					else {
+						storageByte = storageByte + playOrder[i] << currentBitIndex;
+						currentBitIndex = currentBitIndex + storageLength;
+					}
+				}
 
 				// Assign to playback variables and reset record variables
 				notesToPlay = notesRecorded;
@@ -169,11 +187,6 @@ int main(int argc, char *argv[]) {
 			playback = bit_is_set(PINA, 4);
 		}
   	}
-}
-
-// -- Compression Functions --
-int is_note_unique(uint8_t note) {
-
 }
 
 // -- USART Functions --
