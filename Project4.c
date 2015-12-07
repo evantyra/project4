@@ -10,6 +10,8 @@
 //#define MYUBRR 7//F_CPU/16/BAUD-1
 
 // -- Header Functions --
+void delay_ms(uint16_t count);
+
 // Usart
 void usart_init(uint16_t);
 void usart_putchar(uint8_t);
@@ -131,14 +133,14 @@ int main(int argc, char *argv[]) {
 
 				// PORTB = byteToPlay; // for debugging purposes
 
-				_delay_ms(1000);
+				delay_ms(1000);
 
 				// Push in Note off of same note
 				usart_putchar(0x80);
 				usart_putchar(byteToPlay);
 				usart_putchar(0x40);
 
-				_delay_ms(1000*hexaSwitch);
+				delay_ms(hexaSwitch);
 
 				playbackIndex++;
 	   		}
@@ -148,6 +150,12 @@ int main(int argc, char *argv[]) {
 			playback = bit_is_set(PINA, 4);
 		}
   	}
+}
+
+void delay_ms(uint16_t count) {
+  while(count--) {
+    _delay_ms(1);
+  }
 }
 
 // -- usart functions --
