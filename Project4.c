@@ -117,11 +117,21 @@ int main(int argc, char *argv[]) {
 			// we can run our compression algorithm and push to EEPROM
 			if (!(record ^ playback)) {
 				// Compression
-				uint8_t storageLength;
-				if ((int)(log(uniqueNotesRecorded)/log(2)) < log(uniqueNotesRecorded)/log(2))
-					storageLength = 1 + (int)log(uniqueNotesRecorded) / log(2);
+				uint8_t storageLength = 0;
+				if (uniqueNotesRecorded < 2)
+					storageLength = 1;
+				else if (uniqueNotesRecorded < 4)
+					storageLength = 2;
+				else if (uniqueNotesRecorded < 8)
+					storageLength = 3;
+				else if (uniqueNotesRecorded < 16)
+					storageLength = 4;
+				else if (uniqueNotesRecorded < 32)
+					storageLength = 5;
+				else if (uniqueNotesRecorded < 64)
+					storageLength = 6;
 				else
-					storageLength = (int)log(uniqueNotesRecorded) / log(2);
+					storageLength = 7;
 
 				uint8_t currentBitIndex = 0;
 				int storageByte = 0, storageByteIndex = 0;
@@ -156,11 +166,22 @@ int main(int argc, char *argv[]) {
 			uint8_t byteToPlay;
 
 			// Length of data holding each note
-			uint8_t storageLength;
-			if ((int)(log(uniqueNotesRecorded)/log(2)) < log(uniqueNotesRecorded)/log(2))
-				storageLength = 1 + (int)log(uniqueNotesRecorded) / log(2);
+			uint8_t storageLength = 0;
+			
+			if (uniqueNotesRecorded < 2)
+				storageLength = 1;
+			else if (uniqueNotesRecorded < 4)
+				storageLength = 2;
+			else if (uniqueNotesRecorded < 8)
+				storageLength = 3;
+			else if (uniqueNotesRecorded < 16)
+				storageLength = 4;
+			else if (uniqueNotesRecorded < 32)
+				storageLength = 5;
+			else if (uniqueNotesRecorded < 64)
+				storageLength = 6;
 			else
-				storageLength = (int)log(uniqueNotesRecorded) / log(2);
+				storageLength = 7;
 
 			int byteIndex = 0;
 			uint8_t compareBits = pow(2, storageLength + 1) - 1;
@@ -169,7 +190,7 @@ int main(int argc, char *argv[]) {
 
 			for(i = 0; i < notesToPlay; i++) {
 				// Adjusts read byte and logical AND it with the current read byte
-				byteToPlay = compareBits & (currentByteRead >> currentBitIndex);
+				byteToPlay = compareBits & (currentByteRead >> (currentBitIndex));
 
 				// If the whole note wasn't read, grab new byte from EEPROM
 				if (currentBitIndex + storageLength >= 8) {
@@ -181,6 +202,9 @@ int main(int argc, char *argv[]) {
 						byteToPlay = byteToPlay + 
 									(((int)(pow(2, currentBitIndex + 1) - 1) & currentByteRead) <<
 									(storageLength - currentBitIndex));
+				}
+				else {
+					currentBitIndex = currentBitIndex + storageLength;
 				}
 
 				// Need to double check the pins that correspond correctly
@@ -195,20 +219,23 @@ int main(int argc, char *argv[]) {
 			
 				// Push in Note On
 				usart_putchar(0x90);  
-				usart_putchar(uniqueNotesDict[byteToPlay]);
+				usart_putchar(uniqueNotesDict[i]);
 				usart_putchar(0x64);
 
 				_delay_ms(1000);
 
 				// Push in Note off of same note
 				usart_putchar(0x80);  
-				usart_putchar(uniqueNotesDict[byteToPlay]);
+				usart_putchar(uniqueNotesDict[i]);
 				usart_putchar(0x40);
+
+				PORTB = currentByteRead;
 			
 				// Hexaswitch controls how fast notes play back
-				_delay_ms(10000); 
+				_delay_ms(1000); 
 	   		}
-
+	
+			_delay_ms(5000);
 			// Reassigns and updates record and playback		
 			record = bit_is_set(PINA, 3);
 			playback = bit_is_set(PINA, 4);
