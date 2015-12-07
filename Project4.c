@@ -21,6 +21,9 @@ int usart_hasdata(void);
 void EEPROM_write(unsigned int, unsigned char);
 uint8_t EEPROM_read(unsigned int);
 
+// Search functions for Compression
+int is_note_unique(uint8_t);
+
 //static uint8_t data[100] EEMEM;
 
 int main(int argc, char *argv[]) {
@@ -37,10 +40,13 @@ int main(int argc, char *argv[]) {
   	usart_init(7); // MYUBRR
 
 	// Will be used to hold values of PINS for switches
-	int record, playback;
+	int record, playback, i;
 
 	// Used to keep track of values for Compression and Decompression
 	int notesRecorded, notesToPlay;
+	uint8_t uniqueNotesRecorded, uniqueNotesToPlay;
+	uint8_t playOrder = malloc(1024*sizeof(uint8_t));
+	uint8_t uniqueNotesDict = malloc(128*sizeof(uint8_t));
 
   	// Temporary variables to hold data from USART
   	uint8_t status, note, velocity;
@@ -86,9 +92,24 @@ int main(int argc, char *argv[]) {
 					// if (!bit_is_set(PINA,3))
 					// 	continue;
 
-					// Only need to write note to EEPROM
-					EEPROM_write((uint8_t*)notesRecorded, note);	// TODO, CHANGE THIS TO ARRAY COMPRESSION
-					notesRecorded++;
+					// Records data about note into arrays
+					uint8_t note_is_unique = 1;
+					for (i = 0; i < uniqueNotesRecorded; i++)
+						// If note is found add current index to playOrder
+						if (uniqueNotesDict[i] == note) {
+							playOrder[notesRecorded] = i;
+							notesRecorded++;
+							is_note_unique = 0;
+						}
+
+					// If the note is unique, append to dictionary and increment
+					// number of unique notes recorded in this session
+					if (note_is_unique) {
+						uniqueNotesDict[uniqueNotesRecorded] = note;
+						playOrder[notesRecorded] = uniqueNotesRecorded;
+						notesRecorded++;
+						uniqueNotesRecorded++;
+					}
 
 					// PORTB = note; // for debugging purposes
 				}
@@ -96,9 +117,14 @@ int main(int argc, char *argv[]) {
 			
 			// Signals end of recording, when this happens
 			// we can run our compression algorithm and push to EEPROM
-			if (!record) {
+			if (!(record ^ playback)) {
+				// Compression
+
+				// Assign to playback variables and reset record variables
 				notesToPlay = notesRecorded;
 				notesRecorded = 0;
+				uniqueNotesToPlay = uniqueNotesRecorded;
+				uniqueNotesRecorded = 0;
 			}
 		}
 
@@ -110,22 +136,20 @@ int main(int argc, char *argv[]) {
 			while (playbackIndex < notesToPlay) {
 				byteToPlay = EEPROM_read((uint8_t*)playbackIndex);
 
-				// Need to double check the pins that correspond
-				int hexaSwitch = (2*2*2*bit_is_set(PIND, 3) + 
-								  2*2*bit_is_set(PIND, 2) +
-								  2*bit_is_set(PIND, 1) +
-								  1*bit_is_set(PIND, 0))
+				// Need to double check the pins that correspond correctly
+				int hexaSwitch = (bit_is_set(PIND, 3) << 3 + 
+								  bit_is_set(PIND, 2) << 2 +
+								  bit_is_set(PIND, 1) << 1 +
+								  bit_is_set(PIND, 0))
 
-				int lights = (2*2*bit_is_set(PINA, 0) +
-							  2*bit_is_set(PINA, 1) +
-							  1*bit_is_set(PINA, 2))
+				int lights = (bit_is_set(PINA, 0) << 2 +
+							  bit_is_set(PINA, 1) << 1 +
+							  bit_is_set(PINA, 2))
 			
 				// Push in Note On
 				usart_putchar(0x90);  
 				usart_putchar(byteToPlay);
 				usart_putchar(0x64);
-			
-				// PORTB = byteToPlay; // for debugging purposes
 
 				_delay_ms(1000);
 
@@ -134,6 +158,7 @@ int main(int argc, char *argv[]) {
 				usart_putchar(byteToPlay);
 				usart_putchar(0x40);
 			
+				// Hexaswitch controls how fast notes play back
 				_delay_ms(1000*hexaSwitch + 100); 
 
 				playbackIndex++;
@@ -146,7 +171,12 @@ int main(int argc, char *argv[]) {
   	}
 }
 
-// -- usart functions --
+// -- Compression Functions --
+int is_note_unique(uint8_t note) {
+
+}
+
+// -- USART Functions --
 void usart_init(uint16_t ubrr) {
   // Set baud rate
   UBRRH = (ubrr >> 8);
@@ -163,7 +193,6 @@ void usart_init(uint16_t ubrr) {
 
   // Enable receiver and transmitter
   UCSRB = (1<<RXEN)|(1<<TXEN);
-
 }
 
 void usart_putchar(uint8_t data) {
@@ -189,6 +218,7 @@ int usart_hasdata() {
     return 0;
 }
 
+// -- EEPROM Functions --
 void EEPROM_write(unsigned int uniAddress, unsigned char ucData) {
 	while(EECR & (1 << EEWE)); //wait for write to clear	
 	
