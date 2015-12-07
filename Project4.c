@@ -114,14 +114,15 @@ int main(int argc, char *argv[]) {
 				byteToPlay = EEPROM_read((uint8_t*)playbackIndex);
 
 				// Need to double check the pins that correspond
-				int hexaSwitch = (2*2*2*bit_is_set(PIND, 3) +
-								  2*2*bit_is_set(PIND, 2) +
-								  2*bit_is_set(PIND, 1) +
-								  1*bit_is_set(PIND, 0))
 
-				int lights = (2*2*bit_is_set(PINA, 0) +
-							  2*bit_is_set(PINA, 1) +
-							  1*bit_is_set(PINA, 2))
+				int hexaSwitch = (bit_is_set(PIND, 3) << 3 +
+								  bit_is_set(PIND, 2) << 2 +
+								  bit_is_set(PIND, 1) << 1 +
+								  bit_is_set(PIND, 0));
+
+				int lights = (bit_is_set(PINA, 0) << 2 +
+							  bit_is_set(PINA, 1) << 1 +
+							  bit_is_set(PINA, 2));
 
 				// Push in Note On
 				usart_putchar(0x90);
@@ -137,7 +138,7 @@ int main(int argc, char *argv[]) {
 				usart_putchar(byteToPlay);
 				usart_putchar(0x40);
 
-				_delay_ms(1000*hexaSwitch + 100);
+				_delay_ms(1000*hexaSwitch);
 
 				playbackIndex++;
 	   		}
