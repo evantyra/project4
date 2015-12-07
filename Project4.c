@@ -37,10 +37,13 @@ int main(int argc, char *argv[]) {
   	usart_init(7); // MYUBRR
 
 	// Will be used to hold values of PINS for switches
-	int record, playback;
+	int record, playback, i;
 
 	// Used to keep track of values for Compression and Decompression
 	int notesRecorded, notesToPlay;
+	uint8_t uniqueNotesRecorded, uniqueNotesToPlay;
+	uint8_t playOrder = malloc(1024*sizeof(uint8_t));
+	uint8_t uniqueNotesDict = malloc(128*sizeof(uint8_t));
 
   	// Temporary variables to hold data from USART
   	uint8_t status, note, velocity;
@@ -48,14 +51,14 @@ int main(int argc, char *argv[]) {
   	// -- Start Listening --
   	while (1) {
     
-  		record = bit_is_set(PINA, 3);
-		playback = bit_is_set(PINA, 4);
+  		record = bit_is_set(PINA, 5);
+		playback = bit_is_set(PINA, 6);
 
 		// Idle state logic
 		while (!(record ^ playback)) {
 			// Reassigns and updates record and playback		
-			record = bit_is_set(PINA, 3);
-			playback = bit_is_set(PINA, 4);
+			record = bit_is_set(PINA, 5);
+			playback = bit_is_set(PINA, 6);
 
 			// Flushes data if there is any pushed in during this state, will not happen
 			// if the record switch has been turned on
@@ -66,8 +69,8 @@ int main(int argc, char *argv[]) {
 		// Record logic
 		while (record && (record ^ playback)) {
 			// Reassigns and updates record and playback		
-			record = bit_is_set(PINA, 3);
-			playback = bit_is_set(PINA, 4);
+			record = bit_is_set(PINA, 5);
+			playback = bit_is_set(PINA, 6);
 
 			if (usart_hasdata() && record) {
 				// EEPROM Overflow check
@@ -86,9 +89,24 @@ int main(int argc, char *argv[]) {
 					// if (!bit_is_set(PINA,3))
 					// 	continue;
 
-					// Only need to write note to EEPROM
-					EEPROM_write((uint8_t*)notesRecorded, note);	// TODO, CHANGE THIS TO ARRAY COMPRESSION
-					notesRecorded++;
+					// Records data about note into arrays
+					uint8_t note_is_unique = 1;
+					for (i = 0; i < uniqueNotesRecorded; i++)
+						// If note is found add current index to playOrder
+						if (uniqueNotesDict[i] == note) {
+							playOrder[notesRecorded] = i;
+							notesRecorded++;
+							is_note_unique = 0;
+						}
+
+					// If the note is unique, append to dictionary and increment
+					// number of unique notes recorded in this session
+					if (note_is_unique) {
+						uniqueNotesDict[uniqueNotesRecorded] = note;
+						playOrder[notesRecorded] = uniqueNotesRecorded;
+						notesRecorded++;
+						uniqueNotesRecorded++;
+					}
 
 					// PORTB = note; // for debugging purposes
 				}
@@ -96,15 +114,41 @@ int main(int argc, char *argv[]) {
 			
 			// Signals end of recording, when this happens
 			// we can run our compression algorithm and push to EEPROM
-			if (!record) {
+			if (!(record ^ playback)) {
+				// Compression
+				if ((int)log(uniqueNotesRecorded)/log(2) < log(uniqueNotesRecorded)/log(2))
+					uint8_t storageLength = 1 + (int)log(uniqueNotesRecorded) / log(2);
+				else
+					uint8_t storageLength = (int)log(uniqueNotesRecorded) / log(2);
+
+				uint8_t currentBitIndex = 0;
+				int storageByte = 0, storageByteIndex = 0;
+				for (i = 0; i < notesRecorded; i++) {
+					if (currentBitIndex + storageLength >= 8) {
+						storageByte = storageByte  + playOrder[i] << currentBitIndex;
+						EEPROM_write(storageByte, storageByteIndex);
+						storageByteIndex++;
+						currentBitIndex = (currentBitIndex + storageLength) % 8;
+						if (currentBitIndex != 0)
+							storageByte = storageByte + playOrder[i] >> (storageLength - currentBitIndex);
+					}
+					else {
+						storageByte = storageByte + playOrder[i] << currentBitIndex;
+						currentBitIndex = currentBitIndex + storageLength;
+					}
+				}
+
+				// Assign to playback variables and reset record variables
 				notesToPlay = notesRecorded;
 				notesRecorded = 0;
+				uniqueNotesToPlay = uniqueNotesRecorded;
+				uniqueNotesRecorded = 0;
 			}
 		}
 
 		// Playback logic
 		while (playback && (record ^ playback)) {
-			if (notesToPlay == 0)
+			if (notesToPlay = 0)
 				continue;
 
 			uint8_t byteToPlay;
@@ -136,34 +180,30 @@ int main(int argc, char *argv[]) {
 									(storageLength - currentBitIndex);
 				}
 
-				// Need to double check the pins that correspond
-
+				// Need to double check the pins that correspond correctly
 				int hexaSwitch = (bit_is_set(PIND, 3) << 3 + 
 								  bit_is_set(PIND, 2) << 2 +
 								  bit_is_set(PIND, 1) << 1 +
-								  bit_is_set(PIND, 0));
+								  bit_is_set(PIND, 0))
 
 				int lights = (bit_is_set(PINA, 0) << 2 +
 							  bit_is_set(PINA, 1) << 1 +
-							  bit_is_set(PINA, 2));
+							  bit_is_set(PINA, 2))
 			
 				// Push in Note On
 				usart_putchar(0x90);  
-				usart_putchar(byteToPlay);
+				usart_putchar(uniqueNotesDict[byteToPlay]);
 				usart_putchar(0x64);
-			
-				// PORTB = byteToPlay; // for debugging purposes
 
 				_delay_ms(1000);
 
 				// Push in Note off of same note
 				usart_putchar(0x80);  
-				usart_putchar(byteToPlay);
+				usart_putchar(uniqueNotesDict[byteToPlay]);
 				usart_putchar(0x40);
-				
-				_delay_ms(1000*hexaSwitch);
-
-				playbackIndex++;
+			
+				// Hexaswitch controls how fast notes play back
+				_delay_ms(1000*hexaSwitch + 100); 
 	   		}
 
 			// Reassigns and updates record and playback		
@@ -173,7 +213,7 @@ int main(int argc, char *argv[]) {
   	}
 }
 
-// -- usart functions --
+// -- USART Functions --
 void usart_init(uint16_t ubrr) {
   // Set baud rate
   UBRRH = (ubrr >> 8);
@@ -190,7 +230,6 @@ void usart_init(uint16_t ubrr) {
 
   // Enable receiver and transmitter
   UCSRB = (1<<RXEN)|(1<<TXEN);
-
 }
 
 void usart_putchar(uint8_t data) {
@@ -216,6 +255,7 @@ int usart_hasdata() {
     return 0;
 }
 
+// -- EEPROM Functions --
 void EEPROM_write(unsigned int uniAddress, unsigned char ucData) {
 	while(EECR & (1 << EEWE)); //wait for write to clear	
 	
