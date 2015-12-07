@@ -44,7 +44,8 @@ int main(int argc, char *argv[]) {
 	int notesRecorded = 0, notesToPlay = 0;
 	uint8_t uniqueNotesRecorded = 0, uniqueNotesToPlay = 0;
 	uint8_t *playOrder = malloc(1024*sizeof(uint8_t));
-	uint8_t *uniqueNotesDict = malloc(128*sizeof(uint8_t));
+	uint8_t *uniqueNotesDictR = malloc(128*sizeof(uint8_t));
+	uint8_t *uniqueNotesDictP = malloc(128*sizeof(uint8_t));
 
   	// Temporary variables to hold data from USART
   	uint8_t status, note, velocity;
@@ -94,7 +95,7 @@ int main(int argc, char *argv[]) {
 					uint8_t note_is_unique = 1;
 					for (i = 0; i < uniqueNotesRecorded; i++)
 						// If note is found add current index to playOrder
-						if (uniqueNotesDict[i] == note) {
+						if (uniqueNotesDictR[i] == note) {
 							playOrder[notesRecorded] = i;
 							notesRecorded++;
 							note_is_unique = 0;
@@ -103,7 +104,7 @@ int main(int argc, char *argv[]) {
 					// If the note is unique, append to dictionary and increment
 					// number of unique notes recorded in this session
 					if (note_is_unique) {
-						uniqueNotesDict[uniqueNotesRecorded] = note;
+						uniqueNotesDictR[uniqueNotesRecorded] = note;
 						playOrder[notesRecorded] = uniqueNotesRecorded;
 						notesRecorded++;
 						uniqueNotesRecorded++;
@@ -151,6 +152,11 @@ int main(int argc, char *argv[]) {
 				}
 
 				// Assign to playback variables and reset record variables
+				for (i = 0; i < uniqueNotesRecorded; i++) {
+					uniqueNotesDictP[i] = uniqueNotesDictR[i];
+					uniqueNotesDictR[i] = 0;
+				}
+				
 				notesToPlay = notesRecorded;
 				notesRecorded = 0;
 				uniqueNotesToPlay = uniqueNotesRecorded;
@@ -163,22 +169,22 @@ int main(int argc, char *argv[]) {
 			if (notesToPlay == 0)
 				continue;
 
-			uint8_t byteToPlay;
+			uint8_t noteToPlay;
 
 			// Length of data holding each note
 			uint8_t storageLength = 0;
 			
-			if (uniqueNotesRecorded < 2)
+			if (uniqueNotesToPlay < 2)
 				storageLength = 1;
-			else if (uniqueNotesRecorded < 4)
+			else if (uniqueNotesToPlay < 4)
 				storageLength = 2;
-			else if (uniqueNotesRecorded < 8)
+			else if (uniqueNotesToPlay < 8)
 				storageLength = 3;
-			else if (uniqueNotesRecorded < 16)
+			else if (uniqueNotesToPlay < 16)
 				storageLength = 4;
-			else if (uniqueNotesRecorded < 32)
+			else if (uniqueNotesToPlay < 32)
 				storageLength = 5;
-			else if (uniqueNotesRecorded < 64)
+			else if (uniqueNotesToPlay < 64)
 				storageLength = 6;
 			else
 				storageLength = 7;
@@ -190,7 +196,7 @@ int main(int argc, char *argv[]) {
 
 			for(i = 0; i < notesToPlay; i++) {
 				// Adjusts read byte and logical AND it with the current read byte
-				byteToPlay = compareBits & (currentByteRead >> (currentBitIndex));
+				noteToPlay = compareBits & (currentByteRead >> currentBitIndex);
 
 				// If the whole note wasn't read, grab new byte from EEPROM
 				if (currentBitIndex + storageLength >= 8) {
@@ -199,7 +205,7 @@ int main(int argc, char *argv[]) {
 					byteIndex++;
 
 					if (currentBitIndex != 0)
-						byteToPlay = byteToPlay + 
+						noteToPlay = noteToPlay + 
 									(((int)(pow(2, currentBitIndex + 1) - 1) & currentByteRead) <<
 									(storageLength - currentBitIndex));
 				}
@@ -219,14 +225,14 @@ int main(int argc, char *argv[]) {
 			
 				// Push in Note On
 				usart_putchar(0x90);  
-				usart_putchar(uniqueNotesDict[i]);
+				usart_putchar(uniqueNotesDictP[noteToPlay]);
 				usart_putchar(0x64);
 
 				_delay_ms(1000);
 
 				// Push in Note off of same note
 				usart_putchar(0x80);  
-				usart_putchar(uniqueNotesDict[i]);
+				usart_putchar(uniqueNotesDictP[noteToPlay]);
 				usart_putchar(0x40);
 
 				PORTB = currentByteRead;
@@ -237,8 +243,8 @@ int main(int argc, char *argv[]) {
 	
 			_delay_ms(5000);
 			// Reassigns and updates record and playback		
-			record = bit_is_set(PINA, 3);
-			playback = bit_is_set(PINA, 4);
+			record = bit_is_set(PINA, 5);
+			playback = bit_is_set(PINA, 6);
 		}
   	}
 }
