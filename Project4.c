@@ -4,6 +4,7 @@
 #include <avr/eeprom.h>
 #include <avr/io.h>
 #include <avr/delay.h>
+#include <math.h>
 
 //#define CF_CPU 4000000 // 4MHz
 //#define BAUD 31250 // not sure how to find Baud
@@ -40,10 +41,10 @@ int main(int argc, char *argv[]) {
 	int record, playback, i;
 
 	// Used to keep track of values for Compression and Decompression
-	int notesRecorded, notesToPlay;
-	uint8_t uniqueNotesRecorded, uniqueNotesToPlay;
-	uint8_t playOrder = malloc(1024*sizeof(uint8_t));
-	uint8_t uniqueNotesDict = malloc(128*sizeof(uint8_t));
+	int notesRecorded = 0, notesToPlay = 0;
+	uint8_t uniqueNotesRecorded = 0, uniqueNotesToPlay = 0;
+	uint8_t *playOrder = malloc(1024*sizeof(uint8_t));
+	uint8_t *uniqueNotesDict = malloc(128*sizeof(uint8_t));
 
   	// Temporary variables to hold data from USART
   	uint8_t status, note, velocity;
@@ -96,7 +97,7 @@ int main(int argc, char *argv[]) {
 						if (uniqueNotesDict[i] == note) {
 							playOrder[notesRecorded] = i;
 							notesRecorded++;
-							is_note_unique = 0;
+							note_is_unique = 0;
 						}
 
 					// If the note is unique, append to dictionary and increment
@@ -116,24 +117,25 @@ int main(int argc, char *argv[]) {
 			// we can run our compression algorithm and push to EEPROM
 			if (!(record ^ playback)) {
 				// Compression
-				if ((int)log(uniqueNotesRecorded)/log(2) < log(uniqueNotesRecorded)/log(2))
-					uint8_t storageLength = 1 + (int)log(uniqueNotesRecorded) / log(2);
+				uint8_t storageLength;
+				if ((int)(log(uniqueNotesRecorded)/log(2)) < log(uniqueNotesRecorded)/log(2))
+					storageLength = 1 + (int)log(uniqueNotesRecorded) / log(2);
 				else
-					uint8_t storageLength = (int)log(uniqueNotesRecorded) / log(2);
+					storageLength = (int)log(uniqueNotesRecorded) / log(2);
 
 				uint8_t currentBitIndex = 0;
 				int storageByte = 0, storageByteIndex = 0;
 				for (i = 0; i < notesRecorded; i++) {
 					if (currentBitIndex + storageLength >= 8) {
-						storageByte = storageByte  + playOrder[i] << currentBitIndex;
+						storageByte = storageByte + (playOrder[i] << currentBitIndex);
 						EEPROM_write(storageByte, storageByteIndex);
 						storageByteIndex++;
 						currentBitIndex = (currentBitIndex + storageLength) % 8;
 						if (currentBitIndex != 0)
-							storageByte = storageByte + playOrder[i] >> (storageLength - currentBitIndex);
+							storageByte = storageByte + (playOrder[i] >> (storageLength - currentBitIndex));
 					}
 					else {
-						storageByte = storageByte + playOrder[i] << currentBitIndex;
+						storageByte = storageByte + (playOrder[i] << currentBitIndex);
 						currentBitIndex = currentBitIndex + storageLength;
 					}
 				}
@@ -148,20 +150,21 @@ int main(int argc, char *argv[]) {
 
 		// Playback logic
 		while (playback && (record ^ playback)) {
-			if (notesToPlay = 0)
+			if (notesToPlay == 0)
 				continue;
 
 			uint8_t byteToPlay;
 
 			// Length of data holding each note
-			if ((int)log(uniqueNotesRecorded)/log(2) < log(uniqueNotesRecorded)/log(2))
-				uint8_t storageLength = 1 + (int)log(uniqueNotesRecorded) / log(2);
+			uint8_t storageLength;
+			if ((int)(log(uniqueNotesRecorded)/log(2)) < log(uniqueNotesRecorded)/log(2))
+				storageLength = 1 + (int)log(uniqueNotesRecorded) / log(2);
 			else
-				uint8_t storageLength = (int)log(uniqueNotesRecorded) / log(2);
+				storageLength = (int)log(uniqueNotesRecorded) / log(2);
 
 			int byteIndex = 0;
 			uint8_t compareBits = pow(2, storageLength + 1) - 1;
-			uint8_t currentByteRead = EEPROM_read((uint8_t*)byteIndex);
+			uint8_t currentByteRead = EEPROM_read((uint8_t)byteIndex);
 			uint8_t currentBitIndex = 0;
 
 			for(i = 0; i < notesToPlay; i++) {
@@ -170,25 +173,25 @@ int main(int argc, char *argv[]) {
 
 				// If the whole note wasn't read, grab new byte from EEPROM
 				if (currentBitIndex + storageLength >= 8) {
-					currentByteRead = EEPROM_read((uint8_t*)byteIndex);
+					currentByteRead = EEPROM_read((uint8_t)byteIndex);
 					currentBitIndex = (currentBitIndex + storageLength) % 8;
 					byteIndex++;
 
 					if (currentBitIndex != 0)
 						byteToPlay = byteToPlay + 
-									((pow(2, currentBitIndex + 1) - 1) & currentByteRead) <<
-									(storageLength - currentBitIndex);
+									(((int)(pow(2, currentBitIndex + 1) - 1) & currentByteRead) <<
+									(storageLength - currentBitIndex));
 				}
 
 				// Need to double check the pins that correspond correctly
-				int hexaSwitch = (bit_is_set(PIND, 3) << 3 + 
-								  bit_is_set(PIND, 2) << 2 +
-								  bit_is_set(PIND, 1) << 1 +
-								  bit_is_set(PIND, 0))
+				int hexaSwitch = ((bit_is_set(PIND, 3) << 3) + 
+								  (bit_is_set(PIND, 2) << 2) +
+								  (bit_is_set(PIND, 1) << 1) +
+								  bit_is_set(PIND, 0));
 
-				int lights = (bit_is_set(PINA, 0) << 2 +
-							  bit_is_set(PINA, 1) << 1 +
-							  bit_is_set(PINA, 2))
+				int lights = ((bit_is_set(PINA, 0) << 2) +
+							  (bit_is_set(PINA, 1) << 1) +
+							  bit_is_set(PINA, 2));
 			
 				// Push in Note On
 				usart_putchar(0x90);  
@@ -203,7 +206,7 @@ int main(int argc, char *argv[]) {
 				usart_putchar(0x40);
 			
 				// Hexaswitch controls how fast notes play back
-				_delay_ms(1000*hexaSwitch + 100); 
+				_delay_ms(10000); 
 	   		}
 
 			// Reassigns and updates record and playback		
