@@ -1,104 +1,209 @@
+// Purpose of testUsart is to receive and send midi signals. Debubugged with LEDS
 #include <stdio.h>
 #include <stdlib.h>
 #include <avr/eeprom.h>
 #include <avr/io.h>
 #include <avr/delay.h>
 
-//Configure timers/USART/interrupts/etc
-
-#define  16000000 // 16MHz
-#define BAUD 31250 // not sure how to find Baud
-#define MYUBRR F_CPU/16/BAUD-1
+//#define CF_CPU 4000000 // 4MHz
+//#define BAUD 31250 // not sure how to find Baud
+//#define MYUBRR 7//F_CPU/16/BAUD-1
 
 // -- Header Functions --
-// Usart Functions
+// Usart
 void usart_init(uint16_t);
-void usart_putchar(char);
-char usart_getchar(void);
+void usart_putchar(uint8_t);
+uint8_t usart_getchar(void);
+void usart_flush(void);
+int usart_hasdata(void);
+
 // EEPROM
-void eeprom_write(uint_t);
-void eeprom_read(uint_t);
+void EEPROM_write(unsigned int, unsigned char);
+uint8_t EEPROM_read(unsigned int);
 
-//eeprom
-//eeprom_read_block();
-//  uint8_t byteRead = eeprom_read_byte((uint8_t*)23); // read the byte in location 23
-//eeprom_write_block();
-//  eeprom_write_byte ((uint8_t*) 23, 64); //  write the byte 64 to location 23 of the EEPROM
-
-  //Storage DataEEPROM
- 	//Communication Usart
- 	//Counter Timer1
+//static uint8_t data[100] EEMEM;
 
 int main(int argc, char *argv[]) {
-  int record = 0, playback = 0;
-  int Timer1 = 0;
+  	DDRD = 0b00000010; // pin 1: output midi out, pin 0: midi in for storing
+  	DDRB = 0b11110000; // LEDs for debugging -- TODO THIS IS NOW HEXA SWITCH
+  	DDRA = 0b00000000;
 
-  DDRD = 0b00000010; // pin 1: output midi out, pin 0: midi in for storing
-  DDRB = 0b11111111; // LEDs for debugging
+  	// PORTA0 - photo1
+  	// PORTA1 - photo1
+  	// PORTA2 - photo1
+  	// PORTA3 - record
+  	// PORTA4 - playback
 
-  // -- LEDS light up to display startup --
-  PORTB = 0b00000001;
-  _delay_loop_2(1000); //delay of 1s
-  PORTB = 0b00000011;
-  _delay_loop_2(1000);
-  PORTB = 0b00000111;
-  _delay_loop_2(1000);
-  PORTB = 0b00000000;
+  	usart_init(7); // MYUBRR
 
-  //initialize USART
-  usart_init(MYUBBR);
+	// Will be used to hold values of PINS for switches
+	int record, playback;
 
-  // -- Start Listening --
-	while (1) {
-		if (record) {
-			//USART_Read();
-			//Compress();
-			//EEPROM_write();
+	// Used to keep track of values for Compression and Decompression
+	int notesRecorded, notesToPlay;
+
+  	// Temporary variables to hold data from USART
+  	uint8_t status, note, velocity;
+
+  	// -- Start Listening --
+  	while (1) {
+    
+  		record = bit_is_set(PINA, 3);
+		playback = bit_is_set(PINA, 4);
+
+		// Idle state logic
+		while (!(record ^ playback)) {
+			// Reassigns and updates record and playback		
+			record = bit_is_set(PINA, 3);
+			playback = bit_is_set(PINA, 4);
+
+			// Flushes data if there is any pushed in during this state, will not happen
+			// if the record switch has been turned on
+			if (usart_hasdata() & !record)
+				usart_flush();
 		}
-		if (playback) {
-			//EEPROM_read();
-			//Decompress();
-			//USART_write();
+
+		// Record logic
+		while (record && (record ^ playback)) {
+			// Reassigns and updates record and playback		
+			record = bit_is_set(PINA, 3);
+			playback = bit_is_set(PINA, 4);
+
+			if (usart_hasdata() && record) {
+				// EEPROM Overflow check
+				if (notesRecorded > 1023) {
+					usart_flush();
+					continue;
+				}
+
+				status = usart_getchar();
+				if (status == 0x90) { // Status = note on
+    				note = usart_getchar();
+					velocity = usart_getchar();
+
+					// This fixes when it gets stuck in the getchar loops, and record
+					// is switched during that time. --> Don't think this is needed
+					// if (!bit_is_set(PINA,3))
+					// 	continue;
+
+					// Only need to write note to EEPROM
+					EEPROM_write((uint8_t*)notesRecorded, note);	// TODO, CHANGE THIS TO ARRAY COMPRESSION
+					notesRecorded++;
+
+					// PORTB = note; // for debugging purposes
+				}
+			}
+			
+			// Signals end of recording, when this happens
+			// we can run our compression algorithm and push to EEPROM
+			if (!record) {
+				notesToPlay = notesRecorded;
+				notesRecorded = 0;
+			}
 		}
-	}
+
+		// Playback logic
+		while (playback && (record ^ playback)) {
+
+			int playbackIndex = 0;
+			uint8_t byteToPlay;
+			while (playbackIndex < notesToPlay) {
+				byteToPlay = EEPROM_read((uint8_t*)playbackIndex);
+
+				// Need to double check the pins that correspond
+				int hexaSwitch = (2*2*2*bit_is_set(PIND, 3) + 
+								  2*2*bit_is_set(PIND, 2) +
+								  2*bit_is_set(PIND, 1) +
+								  1*bit_is_set(PIND, 0))
+
+				int lights = (2*2*bit_is_set(PINA, 0) +
+							  2*bit_is_set(PINA, 1) +
+							  1*bit_is_set(PINA, 2))
+			
+				// Push in Note On
+				usart_putchar(0x90);  
+				usart_putchar(byteToPlay);
+				usart_putchar(0x64);
+			
+				// PORTB = byteToPlay; // for debugging purposes
+
+				_delay_ms(1000);
+
+				// Push in Note off of same note
+				usart_putchar(0x80);  
+				usart_putchar(byteToPlay);
+				usart_putchar(0x40);
+			
+				_delay_ms(1000*hexaSwitch + 100); 
+
+				playbackIndex++;
+	   		}
+
+			// Reassigns and updates record and playback		
+			record = bit_is_set(PINA, 3);
+			playback = bit_is_set(PINA, 4);
+		}
+  	}
 }
 
 // -- usart functions --
 void usart_init(uint16_t ubrr) {
   // Set baud rate
-  UBRR = ubrr;
+  UBRRH = (ubrr >> 8);
+  UBRRL = ubrr;
+
   /* Asynchronous mode
    * No Parity
    * 1 Stop Bit
    * char size 8 bits
    */
 
-  // Set frame format: 8 bit data, 1stop bit
-  UCSRC=(1<<URSEL)|(3<<UCSZ0);
+  // Set frame format: 8 bit data, 1 stop bit
+  UCSRC = (1<<URSEL)|(3<<UCSZ0);
 
   // Enable receiver and transmitter
   UCSRB = (1<<RXEN)|(1<<TXEN);
 
 }
 
-void usart_putchar(char data) {
-  while ( !(UCSRA & (_BV(UDRE))) ); // waits for transmit buffer to be empty, checks UDRE==1 and Data registry
+void usart_putchar(uint8_t data) {
+  while ((UCSRA & (1 << UDRE)) == 0); // waits for transmit buffer to be empty, checks UDRE==1 and Data registry
   UDR = data; //transmits the data
 }
 
-char usart_getchar() {
-  while ( !(UCSRA & (_BV(RXC))) ); // Waits for RXC==1 (receive complete)
+uint8_t usart_getchar() {
+  while ((UCSRA & (1 << RXC)) == 0); // Waits for RXC==1 (receive complete)
   return UDR;
 }
 
-void flushUsart() {
-  while ( !(UCSRA & (_BV(UDRE))) ); // Waits for buffer to be empty.
+void usart_flush() {
+  while ((UCSRA & (1 << UDRE)) == 0); // Waits for buffer to be empty.
+  while ((UCSRA & (1 << RXC)) == 0); // Waits for RXC==1 (receive complete)
+  int temp =  UDR;
 }
 
-void eeprom_write(uint_t *to) {
-  eeprom_write_block(to, data, 100);
+int usart_hasdata() {
+  if (UCSRA & (1<<RXC))
+  	return 1;
+  else
+    return 0;
 }
 
-void eeprom_read(uint_t *from) {
-  eeprom_read_block(from, data, 100);
+void EEPROM_write(unsigned int uniAddress, unsigned char ucData) {
+	while(EECR & (1 << EEWE)); //wait for write to clear	
+	
+	EEAR = uniAddress; // Set up addr and data reg
+	EEDR = ucData;
+
+	EECR |= (1<<EEMWE); // Write logical one to EEMWE
+	EECR |= (1<<EEWE); // Start eeprom write by setting EEWE
+}
+
+uint8_t EEPROM_read(unsigned int uniAddress) {
+	while(EECR & (1<<EEWE)); // Wait for completion of write
+
+	EEAR = uniAddress; // Set up addr
+	EECR |= (1<<EERE); // Start eeprom read by writing EERE
+
+	return EEDR;
 }
