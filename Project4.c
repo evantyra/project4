@@ -10,8 +10,6 @@
 //#define MYUBRR 7//F_CPU/16/BAUD-1
 
 // -- Header Functions --
-void delay_ms(uint16_t count);
-
 // Usart
 void usart_init(uint16_t);
 void usart_putchar(uint8_t);
@@ -26,18 +24,15 @@ uint8_t EEPROM_read(unsigned int);
 //static uint8_t data[100] EEMEM;
 
 int main(int argc, char *argv[]) {
-  /**
-   * PA0 to PA2 - Photo #1, #2, #3
-   * PA5 - Record Switch
-   * PA6 - Playback Switch
-   *
-   * PB0 to PB3 - Hexadecimal Rotary (1,2,4,8) respectively
-   *
-   */
-
   	DDRD = 0b00000010; // pin 1: output midi out, pin 0: midi in for storing
-  	DDRB = 0b11110000; // HEXA SWITCH
+  	DDRB = 0b11110000; // LEDs for debugging -- TODO THIS IS NOW HEXA SWITCH
   	DDRA = 0b00000000;
+
+  	// PORTA0 - photo1
+  	// PORTA1 - photo1
+  	// PORTA2 - photo1
+  	// PORTA3 - record
+  	// PORTA4 - playback
 
   	usart_init(7); // MYUBRR
 
@@ -52,13 +47,13 @@ int main(int argc, char *argv[]) {
 
   	// -- Start Listening --
   	while (1) {
-
+    
   		record = bit_is_set(PINA, 3);
 		playback = bit_is_set(PINA, 4);
 
 		// Idle state logic
 		while (!(record ^ playback)) {
-			// Reassigns and updates record and playback
+			// Reassigns and updates record and playback		
 			record = bit_is_set(PINA, 3);
 			playback = bit_is_set(PINA, 4);
 
@@ -70,7 +65,7 @@ int main(int argc, char *argv[]) {
 
 		// Record logic
 		while (record && (record ^ playback)) {
-			// Reassigns and updates record and playback
+			// Reassigns and updates record and playback		
 			record = bit_is_set(PINA, 3);
 			playback = bit_is_set(PINA, 4);
 
@@ -98,7 +93,7 @@ int main(int argc, char *argv[]) {
 					// PORTB = note; // for debugging purposes
 				}
 			}
-
+			
 			// Signals end of recording, when this happens
 			// we can run our compression algorithm and push to EEPROM
 			if (!record) {
@@ -109,15 +104,38 @@ int main(int argc, char *argv[]) {
 
 		// Playback logic
 		while (playback && (record ^ playback)) {
-
-			int playbackIndex = 0;
 			uint8_t byteToPlay;
-			while (playbackIndex < notesToPlay) {
-				byteToPlay = EEPROM_read((uint8_t*)playbackIndex);
+
+			// Length of data holding each note
+			if ((int)log(uniqueNotesRecorded)/log(2) < log(uniqueNotesRecorded)/log(2))
+				uint8_t storageLength = 1 + (int)log(uniqueNotesRecorded) / log(2);
+			else
+				uint8_t storageLength = (int)log(uniqueNotesRecorded) / log(2);
+
+			int byteIndex = 0;
+			uint8_t compareBits = pow(2, storageLength + 1) - 1;
+			uint8_t currentByteRead = EEPROM_read((uint8_t*)byteIndex);
+			uint8_t currentBitIndex = 0;
+
+			for(i = 0; i < notesToPlay; i++) {
+				// Adjusts read byte and logical AND it with the current read byte
+				byteToPlay = compareBits & (currentByteRead >> currentBitIndex);
+
+				// If the whole note wasn't read, grab new byte from EEPROM
+				if (currentBitIndex + storageLength >= 8) {
+					currentByteRead = EEPROM_read((uint8_t*)byteIndex);
+					currentBitIndex = (currentBitIndex + storageLength) % 8;
+					byteIndex++;
+
+					if (currentBitIndex != 0)
+						byteToPlay = byteToPlay + 
+									((pow(2, currentBitIndex + 1) - 1) & currentByteRead) <<
+									(storageLength - currentBitIndex);
+				}
 
 				// Need to double check the pins that correspond
 
-				int hexaSwitch = (bit_is_set(PIND, 3) << 3 +
+				int hexaSwitch = (bit_is_set(PIND, 3) << 3 + 
 								  bit_is_set(PIND, 2) << 2 +
 								  bit_is_set(PIND, 1) << 1 +
 								  bit_is_set(PIND, 0));
@@ -125,37 +143,31 @@ int main(int argc, char *argv[]) {
 				int lights = (bit_is_set(PINA, 0) << 2 +
 							  bit_is_set(PINA, 1) << 1 +
 							  bit_is_set(PINA, 2));
-
+			
 				// Push in Note On
-				usart_putchar(0x90);
+				usart_putchar(0x90);  
 				usart_putchar(byteToPlay);
 				usart_putchar(0x64);
-
+			
 				// PORTB = byteToPlay; // for debugging purposes
 
-				delay_ms(1000);
+				_delay_ms(1000);
 
 				// Push in Note off of same note
-				usart_putchar(0x80);
+				usart_putchar(0x80);  
 				usart_putchar(byteToPlay);
 				usart_putchar(0x40);
-
-				delay_ms(hexaSwitch);
+				
+				_delay_ms(1000*hexaSwitch);
 
 				playbackIndex++;
 	   		}
 
-			// Reassigns and updates record and playback
+			// Reassigns and updates record and playback		
 			record = bit_is_set(PINA, 3);
 			playback = bit_is_set(PINA, 4);
 		}
   	}
-}
-
-void delay_ms(uint16_t count) {
-  while(count--) {
-    _delay_ms(1);
-  }
 }
 
 // -- usart functions --
@@ -202,8 +214,8 @@ int usart_hasdata() {
 }
 
 void EEPROM_write(unsigned int uniAddress, unsigned char ucData) {
-	while(EECR & (1 << EEWE)); //wait for write to clear
-
+	while(EECR & (1 << EEWE)); //wait for write to clear	
+	
 	EEAR = uniAddress; // Set up addr and data reg
 	EEDR = ucData;
 
