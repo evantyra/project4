@@ -41,8 +41,10 @@ int main(int argc, char *argv[]) {
 	int record, playback, i;
 
 	// Used to keep track of values for Compression and Decompression
-	int notesRecorded = 0, notesToPlay = 0;
-	uint8_t uniqueNotesRecorded = 0, uniqueNotesToPlay = 0;
+	int notesRecorded = 0;
+	int notesToPlay = 0;
+	uint8_t uniqueNotesRecorded = 0;
+	uint8_t uniqueNotesToPlay = 0;
 	uint8_t *playOrder = malloc(1024*sizeof(uint8_t));
 	uint8_t *uniqueNotesDictR = malloc(128*sizeof(uint8_t));
 	uint8_t *uniqueNotesDictP = malloc(128*sizeof(uint8_t));
@@ -69,54 +71,51 @@ int main(int argc, char *argv[]) {
 		}
 
 		// Record logic
-		while (record && (record ^ playback)) {
+		while (record & (record ^ playback)) {
 			// Reassigns and updates record and playback		
 			record = bit_is_set(PINA, 5);
 			playback = bit_is_set(PINA, 6);
+			PORTB = 0;
 
-			if (usart_hasdata() && record) {
-				// EEPROM Overflow check
-				if (notesRecorded > 1023) {
-					usart_flush();
-					continue;
+			// EEPROM Overflow check
+			if ((int)notesRecorded > 1023) {
+				usart_flush();
+				continue;
+			}
+
+			status = usart_getchar();
+			if (status == 0x90) { // Status = note on
+   				note = usart_getchar();
+				velocity = usart_getchar();
+
+				if (bit_is_set(PINA, 5))
+					break;
+
+				// Records data about note into arrays
+				uint8_t note_is_unique = 1;
+				for (i = 0; i < uniqueNotesRecorded; i++) {
+					// If note is found add current index to playOrder
+					if (uniqueNotesDictR[i] == note) {
+						playOrder[notesRecorded] = i;
+						notesRecorded += 1;
+						note_is_unique = 0;
+					}
 				}
 
-				status = usart_getchar();
-				if (status == 0x90) { // Status = note on
-    				note = usart_getchar();
-					velocity = usart_getchar();
-
-					// This fixes when it gets stuck in the getchar loops, and record
-					// is switched during that time. --> Don't think this is needed
-					// if (!bit_is_set(PINA,3))
-					// 	continue;
-
-					// Records data about note into arrays
-					uint8_t note_is_unique = 1;
-					for (i = 0; i < uniqueNotesRecorded; i++)
-						// If note is found add current index to playOrder
-						if (uniqueNotesDictR[i] == note) {
-							playOrder[notesRecorded] = i;
-							notesRecorded++;
-							note_is_unique = 0;
-						}
-
-					// If the note is unique, append to dictionary and increment
-					// number of unique notes recorded in this session
-					if (note_is_unique) {
-						uniqueNotesDictR[uniqueNotesRecorded] = note;
-						playOrder[notesRecorded] = uniqueNotesRecorded;
-						notesRecorded++;
-						uniqueNotesRecorded++;
-					}
-
-					// PORTB = note; // for debugging purposes
+				// If the note is unique, append to dictionary and increment
+				// number of unique notes recorded in this session
+				if (note_is_unique == 1) {
+					uniqueNotesDictR[uniqueNotesRecorded] = note;
+					playOrder[notesRecorded] = uniqueNotesRecorded;
+					notesRecorded += 1;
+					uniqueNotesRecorded += 1;
 				}
 			}
 			
 			// Signals end of recording, when this happens
 			// we can run our compression algorithm and push to EEPROM
 			if (!(record ^ playback)) {
+				PORTB = 160;
 				// Compression
 				uint8_t storageLength = 0;
 				if (uniqueNotesRecorded < 2)
@@ -136,12 +135,13 @@ int main(int argc, char *argv[]) {
 
 				uint8_t currentBitIndex = 0;
 				int storageByte = 0, storageByteIndex = 0;
+
 				for (i = 0; i < notesRecorded; i++) {
 					if (currentBitIndex + storageLength >= 8) {
-						if (currentBitIndex ! = 0)
+						if (currentBitIndex != 0)
 							storageByte = storageByte + (playOrder[i] << currentBitIndex);
 						else
-							storageByte = storageByte + playOrder[i]
+							storageByte = storageByte + playOrder[i];
 						EEPROM_write(storageByte, storageByteIndex);
 						storageByteIndex++;
 						currentBitIndex = (currentBitIndex + storageLength) % 8;
@@ -149,7 +149,7 @@ int main(int argc, char *argv[]) {
 							storageByte = storageByte + (playOrder[i] >> (storageLength - currentBitIndex));
 					}
 					else {
-						if (currentBitIndex ! = 0)
+						if (currentBitIndex != 0)
 							storageByte = storageByte + (playOrder[i] << currentBitIndex);
 						else
 							storageByte = storageByte + playOrder[i];
@@ -171,9 +171,14 @@ int main(int argc, char *argv[]) {
 		}
 
 		// Playback logic
-		while (playback && (record ^ playback)) {
-			if (notesToPlay == 0)
+		while (playback & (record ^ playback)) {
+			PORTB = 127;
+			if (notesToPlay == 0) {
+				// Reassigns and updates record and playback		
+				record = bit_is_set(PINA, 5);
+				playback = bit_is_set(PINA, 6);
 				continue;
+			}
 
 			uint8_t noteToPlay;
 
@@ -196,7 +201,7 @@ int main(int argc, char *argv[]) {
 				storageLength = 7;
 
 			int byteIndex = 0;
-			uint8_t compareBits = pow(2, storageLength + 1) - 1;
+			uint8_t compareBits = pow(2, storageLength) - 1;
 			uint8_t currentByteRead = EEPROM_read((uint8_t)byteIndex);
 			uint8_t currentBitIndex = 0;
 
@@ -207,7 +212,7 @@ int main(int argc, char *argv[]) {
 				if (currentBitIndex != 0)
 					noteToPlay = compareBits & (currentByteRead >> currentBitIndex);
 				else
-					noteToPlay = compareBits & currentByteRead
+					noteToPlay = compareBits & currentByteRead;
 
 				// If the whole note wasn't read, grab new byte from EEPROM
 				if (currentBitIndex + storageLength >= 8) {
@@ -223,30 +228,18 @@ int main(int argc, char *argv[]) {
 				else {
 					currentBitIndex = currentBitIndex + storageLength;
 				}
-
-				// Need to double check the pins that correspond correctly
-				int hexaSwitch = ((bit_is_set(PIND, 3) << 3) + 
-								  (bit_is_set(PIND, 2) << 2) +
-								  (bit_is_set(PIND, 1) << 1) +
-								  bit_is_set(PIND, 0));
-
-				int lights = ((bit_is_set(PINA, 0) << 2) +
-							  (bit_is_set(PINA, 1) << 1) +
-							  bit_is_set(PINA, 2));
 			
 				// Push in Note On
 				usart_putchar(0x90);  
-				usart_putchar(uniqueNotesDictP[noteToPlay]);
+				usart_putchar(uniqueNotesDictP[i]);
 				usart_putchar(0x64);
 
 				_delay_ms(1000);
 
 				// Push in Note off of same note
 				usart_putchar(0x80);  
-				usart_putchar(uniqueNotesDictP[noteToPlay]);
+				usart_putchar(uniqueNotesDictP[i]);
 				usart_putchar(0x40);
-
-				PORTB = 7 << 4;
 			
 				// Hexaswitch controls how fast notes play back
 				_delay_ms(1000); 
@@ -285,7 +278,10 @@ void usart_putchar(uint8_t data) {
 }
 
 uint8_t usart_getchar() {
-  while ((UCSRA & (1 << RXC)) == 0); // Waits for RXC==1 (receive complete)
+  while ((UCSRA & (1 << RXC)) == 0) {
+  	if (bit_is_set(PINA, 5) == 0)
+		return -1;
+  }; // Waits for RXC==1 (receive complete)
   return UDR;
 }
 
