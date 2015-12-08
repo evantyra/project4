@@ -35,155 +35,170 @@ int main(int argc, char *argv[]) {
    *
    */
 
-  	DDRD = 0b00000010; // pin 1: output midi out, pin 0: midi in for storing
-  	DDRB = 0b11110000; // HEXA SWITCH
-  	DDRA = 0b00000000;
+  DDRD = 0b00000010; // pin 1: output midi out, pin 0: midi in for storing
+  DDRB = 0b11110000; // HEXA SWITCH
+  DDRA = 0b00000000;
 
-  	usart_init(7); // MYUBRR
+  usart_init(7); // MYUBRR
 
-	// Will be used to hold values of PINS for switches
-	int record, playback;
+  // Will be used to hold values of PINS for switches
+  int record, playback;
 
-  	// Temporary variables to hold data from USART
-  	uint8_t status, note, velocity;
+  // Temporary variables to hold data from USART
+  uint8_t status, note, velocity;
+  int index = 0;
 
-	int index = 0;
+  // Creates a song to be played.
+  uint8_t song1[9];
+  songp[0] = 0x45;
+  songp[1] = 0x44;
+  songp[2] = 0x45;
+  songp[3] = 0x44;
+  songp[4] = 0x45;
+  songp[5] = 0x40;
+  songp[6] = 0x43;
+  songp[7] = 0x41;
+  songp[8] = 0x3E;
 
-  	// -- Start Listening --
-  	while (1) {
+  // -- Start Listening --
+  while (1) {
 
-  		record = bit_is_set(PINA, 5);
-		playback = bit_is_set(PINA, 6);
+    record = bit_is_set(PINA, 5);
+    playback = bit_is_set(PINA, 6);
 
-		// Idle state logic
-		while (!(record ^ playback)) {
-			// Reassigns and updates record and playback
-			record = bit_is_set(PINA, 5);
-			playback = bit_is_set(PINA, 6);
+    // Idle state logic
+    while (!(record ^ playback)) {
+      // Reassigns and updates record and playback
+      record = bit_is_set(PINA, 5);
+      playback = bit_is_set(PINA, 6);
 
-			// Flushes data if there is any pushed in during this state, will not happen
-			// if the record switch has been turned on
-			if (usart_hasdata() & !record)
-				usart_flush();
-		}
+      // Flushes data if there is any pushed in during this state, will not happen
+      // if the record switch has been turned on
+      if (usart_hasdata() & !record)
+        usart_flush();
+    }
 
-		// Record logic
-		while (record && (record ^ playback)) {
-			// Reassigns and updates record and playback
-			record = bit_is_set(PINA, 5);
-			playback = bit_is_set(PINA, 6);
+    // Record logic
+    while (record && (record ^ playback)) {
+      // Reassigns and updates record and playback
+      record = bit_is_set(PINA, 5);
+      playback = bit_is_set(PINA, 6);
 
-			if (usart_hasdata() && record) {
-				// EEPROM Overflow check
-				if (index > 1023) {
-					usart_flush();
-					continue;
-				}
+      if (usart_hasdata() && record) {
+        // EEPROM Overflow check
+        if (index > 1023) {
+          usart_flush();
+          continue;
+        }
 
-				status = usart_getchar();
-				if (status == 0x90) { // Status = note on
-    				note = usart_getchar();
-					velocity = usart_getchar();
+        status = usart_getchar();
+        if (status == 0x90) { // Status = note on
+          note = usart_getchar();
+          velocity = usart_getchar();
 
-					// This fixes when it gets stuck in the getchar loops, and record
-					// is switched during that time. --> Don't think this is needed
-					// if (!bit_is_set(PINA,3))
-					// 	continue;
+          // This fixes when it gets stuck in the getchar loops, and record
+          // is switched during that time. --> Don't think this is needed
+          // if (!bit_is_set(PINA,3))
+          // 	continue;
 
-					// Only need to write note to EEPROM
-					EEPROM_write((uint8_t*)index, note);	// TODO, CHANGE THIS TO ARRAY COMPRESSION
-					index++;
+          // Only need to write note to EEPROM
+          EEPROM_write((uint8_t*)index, note);	// TODO, CHANGE THIS TO ARRAY COMPRESSION
+          index++;
 
-					// PORTB = note; // for debugging purposes
-				}
-			}
+          // PORTB = note; // for debugging purposes
+        }
+      }
 
-		}
+    }
 
-		// Playback logic
-		while (playback && (record ^ playback)) {
+    // Playback logic
+    while (playback && (record ^ playback)) {
 
-			int playbackIndex = 0;
-			uint8_t byteToPlay;
-			while (playbackIndex < index) {
-				byteToPlay = EEPROM_read((uint8_t*)playbackIndex);
+      int playbackIndex = 0;
+      uint8_t byteToPlay;
+      while (playbackIndex < index) {
+        byteToPlay = EEPROM_read((uint8_t*)playbackIndex);
 
-				// Need to double check the pins that correspond
-				int hexaSwitch = 0, photo = 0;
+        // Need to double check the pins that correspond
+        int hexaSwitch = 0, photo = 0;
 
-				if (!bit_is_set(PINB, 3))
-					hexaSwitch += 8;
-				if (!bit_is_set(PINB, 2))
-					hexaSwitch += 4;
-				if (!bit_is_set(PINB, 1))
-					hexaSwitch += 2;
-				if (!bit_is_set(PINB, 0))
-					hexaSwitch += 1;
+        if (!bit_is_set(PINB, 3))
+          hexaSwitch += 8;
+        if (!bit_is_set(PINB, 2))
+          hexaSwitch += 4;
+        if (!bit_is_set(PINB, 1))
+          hexaSwitch += 2;
+        if (!bit_is_set(PINB, 0))
+          hexaSwitch += 1;
 
-				//int hexaSwitch = ((bit_is_set(PINB, 3) << 3) +
-				//				  (bit_is_set(PINB, 2) << 2) +
-				//				  (bit_is_set(PINB, 1) << 1) +
-				//				  bit_is_set(PINB, 0));
-				
-				if (!bit_is_set(PINA, 2))
-					photo += 4;
-				if (!bit_is_set(PINA, 1))
-					photo += 2;
-				if (!bit_is_set(PINA, 0))
-					photo += 1;
+        //int hexaSwitch = ((bit_is_set(PINB, 3) << 3) +
+        //				  (bit_is_set(PINB, 2) << 2) +
+        //				  (bit_is_set(PINB, 1) << 1) +
+        //				  bit_is_set(PINB, 0));
 
-				//int lights = ((bit_is_set(PINA, 0) << 2) +
-				//			  (bit_is_set(PINA, 1) << 1) +
-				//			  bit_is_set(PINA, 2));
+        if (!bit_is_set(PINA, 2))
+          photo += 4;
+        if (!bit_is_set(PINA, 1))
+          photo += 2;
+        if (!bit_is_set(PINA, 0))
+          photo += 1;
 
-				
+        int songIndex = 0;
+        uint8_t byteToPlay2;
+        // Push in Note On
+        do {
 
-				// Push in Note On
-				 do {
+          while (bit_is_set(PINA, 0)); // pause - takes priority
 
-				 	while (bit_is_set(PINA, 0)); // pause - takes priority
-	
-					while (bit_is_set(PINA, 2)) { // plays a predefined song
-						usart_putchar(0x90);
-						usart_putchar(byteToPlay);
-						usart_putchar(0x64);
+          while (bit_is_set(PINA, 2)) { // plays a predefined song
 
-						// PORTB = byteToPlay; // for debugging purposes
+            while (bit_is_set(PINA, 0)); // pause - takes priority even in the predefined song
 
-						delay_ms(1000);
+            if (songIndex >= 9) { // songIndex resets after it ends
+              songIndex = 0;
+              delay_ms(1000);
+            }
 
-						// Push in Note off of same note
-						usart_putchar(0x80);
-						usart_putchar(byteToPlay);
-						usart_putchar(0x40);
-						int ans = 1500 - (100*hexaSwitch); // - (hexaSwitch*100)
-						delay_ms(ans);
-					}
-					usart_putchar(0x90);
-					usart_putchar(byteToPlay);
-					usart_putchar(0x64);
+            byteToPlay2 = song1[songIndex];
+            usart_putchar(0x90);
+            usart_putchar(byteToPlay2);
+            usart_putchar(0x64);
 
-					// PORTB = byteToPlay; // for debugging purposes
+            delay_ms(1000);
 
-					delay_ms(1000);
+            usart_putchar(0x80);
+            usart_putchar(byteToPlay2);
+            usart_putchar(0x40);
+            int ans = 1500 - (100*hexaSwitch); // Hexadecimal Rotary Switch works within the predefined song
+            delay_ms(ans);
 
-					// Push in Note off of same note
-					usart_putchar(0x80);
-					usart_putchar(byteToPlay);
-					usart_putchar(0x40);
-					int ans = 1500 - (100*hexaSwitch); // - (hexaSwitch*100)
-					delay_ms(ans);
-				} while (bit_is_set(PINA, 1)); // stutter effect
+            songIndex++;
+          }
+          usart_putchar(0x90);
+          usart_putchar(byteToPlay);
+          usart_putchar(0x64);
+
+          // PORTB = byteToPlay; // for debugging purposes
+
+          delay_ms(1000);
+
+          // Push in Note off of same note
+          usart_putchar(0x80);
+          usart_putchar(byteToPlay);
+          usart_putchar(0x40);
+          int ans = 1500 - (100*hexaSwitch); // - (hexaSwitch*100)
+          delay_ms(ans);
+        } while (bit_is_set(PINA, 1)); // stutter effect
 
 
-				playbackIndex++;
-	   		}
+        playbackIndex++;
+      }
 
-			// Reassigns and updates record and playback
-			record = bit_is_set(PINA, 5);
-			playback = bit_is_set(PINA, 6);
-		}
-  	}
+      // Reassigns and updates record and playback
+      record = bit_is_set(PINA, 5);
+      playback = bit_is_set(PINA, 6);
+    }
+  }
 }
 
 
@@ -231,26 +246,26 @@ void usart_flush() {
 
 int usart_hasdata() {
   if (UCSRA & (1<<RXC))
-  	return 1;
+    return 1;
   else
     return 0;
 }
 
 void EEPROM_write(unsigned int uniAddress, unsigned char ucData) {
-	while(EECR & (1 << EEWE)); //wait for write to clear
+  while(EECR & (1 << EEWE)); //wait for write to clear
 
-	EEAR = uniAddress; // Set up addr and data reg
-	EEDR = ucData;
+  EEAR = uniAddress; // Set up addr and data reg
+  EEDR = ucData;
 
-	EECR |= (1<<EEMWE); // Write logical one to EEMWE
-	EECR |= (1<<EEWE); // Start eeprom write by setting EEWE
+  EECR |= (1<<EEMWE); // Write logical one to EEMWE
+  EECR |= (1<<EEWE); // Start eeprom write by setting EEWE
 }
 
 uint8_t EEPROM_read(unsigned int uniAddress) {
-	while(EECR & (1<<EEWE)); // Wait for completion of write
+  while(EECR & (1<<EEWE)); // Wait for completion of write
 
-	EEAR = uniAddress; // Set up addr
-	EECR |= (1<<EERE); // Start eeprom read by writing EERE
+  EEAR = uniAddress; // Set up addr
+  EECR |= (1<<EERE); // Start eeprom read by writing EERE
 
-	return EEDR;
+  return EEDR;
 }
