@@ -7,7 +7,7 @@
 
 //#define CF_CPU 4000000 // 4MHz
 //#define BAUD 31250 // not sure how to find Baud
-//#define MYUBRR 7//F_CPU/16/BAUD-1
+//#define MYUBRR 7//F_CPU/16/BAUD-1Q
 
 // -- Header Functions --
 void delay_ms(uint16_t count);
@@ -50,15 +50,15 @@ int main(int argc, char *argv[]) {
 
   // Creates a song to be played.
   uint8_t song1[9];
-  songp[0] = 0x45;
-  songp[1] = 0x44;
-  songp[2] = 0x45;
-  songp[3] = 0x44;
-  songp[4] = 0x45;
-  songp[5] = 0x40;
-  songp[6] = 0x43;
-  songp[7] = 0x41;
-  songp[8] = 0x3E;
+  song1[0] = 0x45;
+  song1[1] = 0x44;
+  song1[2] = 0x45;
+  song1[3] = 0x44;
+  song1[4] = 0x45;
+  song1[5] = 0x40;
+  song1[6] = 0x43;
+  song1[7] = 0x41;
+  song1[8] = 0x3E;
 
   // -- Start Listening --
   while (1) {
@@ -114,43 +114,29 @@ int main(int argc, char *argv[]) {
     // Playback logic
     while (playback && (record ^ playback)) {
 
-      int playbackIndex = 0;
-      uint8_t byteToPlay;
-      while (playbackIndex < index) {
-        byteToPlay = EEPROM_read((uint8_t*)playbackIndex);
+	    int hexaSwitch = 0, photo = 0;
 
-        // Need to double check the pins that correspond
-        int hexaSwitch = 0, photo = 0;
-
-        if (!bit_is_set(PINB, 3))
-          hexaSwitch += 8;
-        if (!bit_is_set(PINB, 2))
-          hexaSwitch += 4;
-        if (!bit_is_set(PINB, 1))
-          hexaSwitch += 2;
-        if (!bit_is_set(PINB, 0))
-          hexaSwitch += 1;
-
-        //int hexaSwitch = ((bit_is_set(PINB, 3) << 3) +
-        //				  (bit_is_set(PINB, 2) << 2) +
-        //				  (bit_is_set(PINB, 1) << 1) +
-        //				  bit_is_set(PINB, 0));
-
-        if (!bit_is_set(PINA, 2))
-          photo += 4;
-        if (!bit_is_set(PINA, 1))
-          photo += 2;
-        if (!bit_is_set(PINA, 0))
-          photo += 1;
-
-        int songIndex = 0;
+	    int songIndex = 0;
         uint8_t byteToPlay2;
-        // Push in Note On
-        do {
 
-          while (bit_is_set(PINA, 0)); // pause - takes priority
+		while (bit_is_set(PINA, 2)) { // plays a predefined song
+			// Reassigns and updates record and playback
+      		record = bit_is_set(PINA, 5);
+      		playback = bit_is_set(PINA, 6);	
+			
+			if (!(record ^ playback))
+				break;	
 
-          while (bit_is_set(PINA, 2)) { // plays a predefined song
+			hexaSwitch = 0;
+
+			if (!bit_is_set(PINB, 3))
+         		hexaSwitch += 8;
+     	    if (!bit_is_set(PINB, 2))
+          		hexaSwitch += 4;
+        	if (!bit_is_set(PINB, 1))
+          		hexaSwitch += 2;
+        	if (!bit_is_set(PINB, 0))
+          		hexaSwitch += 1;
 
             while (bit_is_set(PINA, 0)); // pause - takes priority even in the predefined song
 
@@ -173,7 +159,38 @@ int main(int argc, char *argv[]) {
             delay_ms(ans);
 
             songIndex++;
-          }
+      }
+
+	  if (!(record ^ playback))
+		continue;
+
+      int playbackIndex = 0;
+      uint8_t byteToPlay;
+
+      while (playbackIndex < index && !bit_is_set(PINA, 2)) {
+	  	// Reassigns and updates record and playback
+      	record = bit_is_set(PINA, 5);
+      	playback = bit_is_set(PINA, 6);	
+			
+		if (!(record ^ playback))
+			break;
+
+        byteToPlay = EEPROM_read((uint8_t*)playbackIndex);
+
+
+        do {
+		  hexaSwitch = 0;
+		  if (!bit_is_set(PINB, 3))
+            hexaSwitch += 8;
+          if (!bit_is_set(PINB, 2))
+            hexaSwitch += 4;
+          if (!bit_is_set(PINB, 1))
+            hexaSwitch += 2;
+          if (!bit_is_set(PINB, 0))
+            hexaSwitch += 1;
+
+          while (bit_is_set(PINA, 0)); // pause - takes priority
+
           usart_putchar(0x90);
           usart_putchar(byteToPlay);
           usart_putchar(0x64);
